@@ -1,6 +1,6 @@
 ## Release notes
 
-### 0.4.10 (#286) 
+### 0.4.10 (#286) -- February 6, 2017
 * Removed Vagrant and Readthedocs support 
 * Explicit saving of configuration (issue #284)
 
