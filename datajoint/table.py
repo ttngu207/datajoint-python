@@ -275,6 +275,10 @@ class Table(QueryExpression):
     def external(self):
         return self.connection.schemas[self.database].external
 
+    @property
+    def fileset(self):
+        return self.connection.schemas[self.database].fileset
+
     def update1(self, row):
         """
         ``update1`` updates one existing entry in the table.
@@ -879,6 +883,8 @@ class Table(QueryExpression):
                     )
             elif attr.is_filepath:
                 value = self.external[attr.store].upload_filepath(value).bytes
+            elif attr.is_fileset:
+                value = self.fileset[attr.store].insert_fileset(value)
             elif attr.numeric:
                 value = str(int(value) if isinstance(value, bool) else value)
         return name, placeholder, value

@@ -9,7 +9,7 @@ from .diagram import Diagram, _get_tier
 from .settings import config
 from .errors import DataJointError, AccessError
 from .jobs import JobTable
-from .external import ExternalMapping
+from .external import ExternalMapping, FileSetMapping
 from .heading import Heading
 from .utils import user_choice, to_camel_case
 from .user_tables import Part, Computed, Imported, Manual, Lookup
@@ -72,6 +72,7 @@ class Schema:
         self.create_tables = create_tables
         self._jobs = None
         self.external = ExternalMapping(self)
+        self.fileset = FileSetMapping(self)
         self.add_objects = add_objects
         self.declare_list = []
         if schema_name:

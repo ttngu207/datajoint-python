@@ -113,6 +113,7 @@ class BucketInaccessible(DataJointError):
 
 ADAPTED_TYPE_SWITCH = "DJ_SUPPORT_ADAPTED_TYPES"
 FILEPATH_FEATURE_SWITCH = "DJ_SUPPORT_FILEPATH_MANAGEMENT"
+FILESET_FEATURE_SWITCH = "DJ_SUPPORT_FILEPATH_MANAGEMENT"
 
 
 def _switch_adapted_types(on):
@@ -147,3 +148,10 @@ def _support_filepath_types():
     check if support for AttributeAdapter is enabled
     """
     return os.getenv(FILEPATH_FEATURE_SWITCH, "FALSE").upper() == "TRUE"
+
+
+def _support_fileset_types():
+    """
+    check if support for AttributeAdapter is enabled
+    """
+    return os.getenv(FILESET_FEATURE_SWITCH, "FALSE").upper() == "TRUE"

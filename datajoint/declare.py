@@ -5,7 +5,13 @@ declare the corresponding mysql tables.
 import re
 import pyparsing as pp
 import logging
-from .errors import DataJointError, _support_filepath_types, FILEPATH_FEATURE_SWITCH
+from .errors import (
+    DataJointError,
+    _support_filepath_types,
+    FILEPATH_FEATURE_SWITCH,
+    _support_fileset_types,
+    FILESET_FEATURE_SWITCH,
+)
 from .attribute_adapter import get_adapter
 
 UUID_DATA_TYPE = "binary(16)"
@@ -31,6 +37,7 @@ TYPE_PATTERN = {
         INTERNAL_ATTACH=r"attach$",
         EXTERNAL_ATTACH=r"attach@(?P<store>[a-z][\-\w]*)$",
         FILEPATH=r"filepath@(?P<store>[a-z][\-\w]*)$",
+        FILESET=r"fileset@(?P<store>[a-z][\-\w]*)$",
         UUID=r"uuid$",
         ADAPTED=r"<.+>$",
     ).items()
@@ -43,6 +50,7 @@ SPECIAL_TYPES = {
     "EXTERNAL_ATTACH",
     "EXTERNAL_BLOB",
     "FILEPATH",
+    "FILESET",
     "ADAPTED",
 }
 NATIVE_TYPES = set(TYPE_PATTERN) - SPECIAL_TYPES
@@ -543,6 +551,25 @@ def substitute_special_type(match, category, foreign_key_sql, context):
             {env} = TRUE or upgrade datajoint.
             """.format(
                     env=FILEPATH_FEATURE_SWITCH
+                )
+            )
+        match["store"] = match["type"].split("@", 1)[1]
+        match["type"] = UUID_DATA_TYPE
+        foreign_key_sql.append(
+            "FOREIGN KEY (`{name}`) REFERENCES `{{database}}`.`{external_table_root}_{store}` (`hash`) "
+            "ON UPDATE RESTRICT ON DELETE RESTRICT".format(
+                external_table_root=EXTERNAL_TABLE_ROOT, **match
+            )
+        )
+    elif category == "FILESET":
+        if not _support_fileset_types():
+            raise DataJointError(
+                """
+            The fileset data type is disabled until complete validation.
+            To turn it on as experimental feature, set the environment variable
+            {env} = TRUE or upgrade datajoint.
+            """.format(
+                    env=FILESET_FEATURE_SWITCH
                 )
             )
         match["store"] = match["type"].split("@", 1)[1]

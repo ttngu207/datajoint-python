@@ -1,7 +1,10 @@
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from collections.abc import Mapping
 from tqdm import tqdm
+from datetime import datetime
 import logging
+import hashlib
+import inspect
 from .settings import config
 from .errors import DataJointError, MissingExternalFile
 from .hash import uuid_from_buffer, uuid_from_file
@@ -9,7 +12,8 @@ from .table import Table, FreeTable
 from .heading import Heading
 from .declare import EXTERNAL_TABLE_ROOT
 from . import s3
-from .utils import safe_write, safe_copy
+from .utils import safe_write, safe_copy, ClassProperty
+from .user_tables import Part
 
 logger = logging.getLogger(__name__.split(".")[0])
 
@@ -34,7 +38,7 @@ def subfold(name, folds):
 class ExternalTable(Table):
     """
     The table tracking externally stored objects.
-    Declare as ExternalTable(connection, database)
+    Declare as ExternalTable(connection, store, database)
     """
 
     def __init__(self, connection, store, database):
@@ -54,7 +58,6 @@ class ExternalTable(Table):
         self._support = [self.full_table_name]
         if not self.is_declared:
             self.declare()
-        self._s3 = None
         if self.spec["protocol"] == "file" and not Path(self.spec["location"]).is_dir():
             raise FileNotFoundError(
                 "Inaccessible local directory %s" % self.spec["location"]
@@ -499,6 +502,193 @@ class ExternalMapping(Mapping):
                 store=store,
                 database=self.schema.database,
             )
+        return self._tables[store]
+
+    def __len__(self):
+        return len(self._tables)
+
+    def __iter__(self):
+        return iter(self._tables)
+
+
+class FileSetTable(Table):
+    """
+    The table tracking fileset - collection of files - from externally stored objects.
+    Declare as FileSetTable(external_table: ExternalTable)
+    """
+
+    def __init__(self, external_table: ExternalTable):
+        self.external_table = external_table
+        self.store = external_table.store
+        self.database = external_table.database
+        self._connection = external_table.connection
+        self._heading = Heading(
+            table_info=dict(
+                conn=self._connection,
+                database=self.database,
+                table_name=self.table_name,
+                context=None,
+            )
+        )
+        self._support = [self.full_table_name]
+        if not self.is_declared:
+            self.declare()
+        self._file_part_table = None
+
+    @property
+    def definition(self):
+        return """
+        fileset_id: UUID  # identifier for a fileset - computed from the aggregated checksum of all files in the fileset
+        ---
+        fileset_size: bigint unsigned   # size of the entire fileset in bytes
+        file_count: int unsigned
+        fileset_creation_time: datetime # creation time (UTC) of the fileset
+        """
+
+    @property
+    def table_name(self):
+        return f"{self.external_table.table_name}_fileset"
+
+    class _File(Part):
+        _store = None
+
+        @property
+        def definition(self):
+            return f"""
+            -> master
+            hash  : uuid    #  hash of relative filepath (filepath)
+            ---
+            file: filepath@{self._store}
+            """
+
+        @ClassProperty
+        def table_name(cls):
+            return f"{cls._master.external_table.table_name}_fileset__file"
+
+    @property
+    def File(self):
+        if self._file_part_table is None:
+            # delcare part-table File
+            self._File._master = self
+            self._File._store = self.store
+            self._File.database = self.database
+            self._File._connection = self.connection
+            context = dict(
+                inspect.currentframe().f_locals, master=self, self=self._File
+            )
+            self._File._heading = Heading(
+                table_info=dict(
+                    conn=self.connection,
+                    database=self.database,
+                    table_name=self._File.table_name,
+                    context=context,
+                )
+            )
+            self._File._support = [self._File.full_table_name]
+            self._file_part_table = self._File()
+            if not self._file_part_table.is_declared:
+                self._file_part_table.declare(context)
+        return self._file_part_table
+
+    def insert_fileset(self, fileset_fullpath):
+        if isinstance(fileset_fullpath, (str, Path)):
+            fileset_fullpath = Path(fileset_fullpath)
+            assert (
+                fileset_fullpath.exists() and fileset_fullpath.is_dir()
+            ), f"{fileset_fullpath} must be a valid directory"
+
+            files = [f for f in fileset_fullpath.rglob("*") if f.is_file()]
+        elif isinstance(fileset_fullpath, list):
+            files = []
+            for f in fileset_fullpath:
+                f = Path(f)
+                if not f.is_file():
+                    continue
+                if not f.exists():
+                    raise FileNotFoundError(f"{f} not found!")
+                files.append(f)
+        else:
+            raise ValueError(
+                "fileset_fullpath must be a valid directory or list of valid filepaths"
+            )
+
+        if not files:
+            raise FileNotFoundError(f"No file found in {fileset_fullpath}")
+
+        def insert():
+            # upload to store and insert into external table
+            external_uuids = [
+                {"hash": self.external_table.upload_filepath(f)} for f in files
+            ]
+            # query the contents_hash to form fileset_id
+            content_hashes, external_sizes = (
+                self.external_table & external_uuids
+            ).fetch("contents_hash", "size", order_by="hash")
+            hashed = hashlib.md5()
+            for file_hash in content_hashes:
+                hashed.update(str(file_hash).encode())
+
+            fileset_id = hashed.hexdigest()
+
+            self.insert1(
+                {
+                    "fileset_id": fileset_id,
+                    "fileset_size": sum(external_sizes),
+                    "file_count": len(files),
+                    "fileset_creation_time": datetime.utcnow(),
+                }
+            )
+            self._File.insert(
+                [
+                    {"fileset_id": fileset_id, "hash": h["hash"], "file": f}
+                    for h, f in zip(external_uuids, files)
+                ]
+            )
+            return fileset_id
+
+        # transaction-safe insert
+        if not self.connection.in_transaction:
+            with self.connection.transaction:
+                fileset_id = insert()
+        else:
+            fileset_id = insert()
+
+        return fileset_id
+
+    def fetch_files(self, fileset_id):
+        return sorted((self._File & {"fileset_id": fileset_id}).fetch("file"))
+
+
+class FileSetMapping(Mapping):
+    """
+    The external manager contains all the tables for all fileset stores for a given schema
+    :Example:
+        e = ExternalMapping(schema)
+        external_table = e[store]
+    """
+
+    def __init__(self, schema):
+        self.schema = schema
+        self._tables = {}
+
+    def __repr__(self):
+        return "External file tables for schema `{schema}`:\n    ".format(
+            schema=self.schema.database
+        ) + "\n    ".join(
+            '"{store}" {protocol}:{location}'.format(store=k, **v.spec)
+            for k, v in self.items()
+        )
+
+    def __getitem__(self, store):
+        """
+        Triggers the creation of a fileset table.
+        Should only be used when ready to save or read from external storage.
+
+        :param store: the name of the store
+        :return: the FileSetTable object for the store
+        """
+        if store not in self._tables:
+            self._tables[store] = FileSetTable(self.schema.external[store])
         return self._tables[store]
 
     def __len__(self):

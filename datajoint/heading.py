@@ -3,7 +3,13 @@ from collections import namedtuple, defaultdict
 from itertools import chain
 import re
 import logging
-from .errors import DataJointError, _support_filepath_types, FILEPATH_FEATURE_SWITCH
+from .errors import (
+    DataJointError,
+    _support_filepath_types,
+    FILEPATH_FEATURE_SWITCH,
+    _support_fileset_types,
+    FILESET_FEATURE_SWITCH,
+)
 from .declare import (
     UUID_DATA_TYPE,
     SPECIAL_TYPES,
@@ -31,6 +37,7 @@ default_attribute_properties = (
         is_blob=False,
         is_attachment=False,
         is_filepath=False,
+        is_fileset=False,
         is_external=False,
         adapter=None,
         store=None,
@@ -142,7 +149,10 @@ class Heading:
         return [
             k
             for k, v in self.attributes.items()
-            if not v.is_blob and not v.is_attachment and not v.is_filepath
+            if not v.is_blob
+            and not v.is_attachment
+            and not v.is_filepath
+            and not v.is_fileset
         ]
 
     @property
@@ -293,6 +303,7 @@ class Heading:
                 uuid=False,
                 is_attachment=False,
                 is_filepath=False,
+                is_fileset=False,
                 adapter=None,
                 store=None,
                 is_external=False,
@@ -362,10 +373,21 @@ class Heading:
                             env=FILEPATH_FEATURE_SWITCH
                         )
                     )
+                if category == "FILETSET" and not _support_fileset_types():
+                    raise DataJointError(
+                        """
+                        The fileset data type is disabled until complete validation.
+                        To turn it on as experimental feature, set the environment variable
+                        {env} = TRUE or upgrade datajoint.
+                        """.format(
+                            env=FILESET_FEATURE_SWITCH
+                        )
+                    )
                 attr.update(
                     unsupported=False,
                     is_attachment=category in ("INTERNAL_ATTACH", "EXTERNAL_ATTACH"),
                     is_filepath=category == "FILEPATH",
+                    is_fileset=category == "FILESET",
                     # INTERNAL_BLOB is not a custom type but is included for completeness
                     is_blob=category in ("INTERNAL_BLOB", "EXTERNAL_BLOB"),
                     uuid=category == "UUID",
@@ -376,10 +398,15 @@ class Heading:
                 )
 
             if attr["in_key"] and any(
-                (attr["is_blob"], attr["is_attachment"], attr["is_filepath"])
+                (
+                    attr["is_blob"],
+                    attr["is_attachment"],
+                    attr["is_filepath"],
+                    attr["is_fileset"],
+                )
             ):
                 raise DataJointError(
-                    "Blob, attachment, or filepath attributes are not allowed in the primary key"
+                    "Blob, attachment, filepath or fileset attributes are not allowed in the primary key"
                 )
 
             if (
