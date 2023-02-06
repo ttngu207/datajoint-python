@@ -373,7 +373,7 @@ class Heading:
                             env=FILEPATH_FEATURE_SWITCH
                         )
                     )
-                if category == "FILETSET" and not _support_fileset_types():
+                if category == "FILESET" and not _support_fileset_types():
                     raise DataJointError(
                         """
                         The fileset data type is disabled until complete validation.
@@ -393,7 +393,7 @@ class Heading:
                     uuid=category == "UUID",
                     is_external=category in EXTERNAL_TYPES,
                     store=attr["type"].split("@")[1]
-                    if category in EXTERNAL_TYPES
+                    if category in EXTERNAL_TYPES or category == "FILESET"
                     else None,
                 )
 

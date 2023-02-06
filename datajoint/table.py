@@ -884,7 +884,7 @@ class Table(QueryExpression):
             elif attr.is_filepath:
                 value = self.external[attr.store].upload_filepath(value).bytes
             elif attr.is_fileset:
-                value = self.fileset[attr.store].insert_fileset(value)
+                value = self.fileset[attr.store].insert_fileset(value).bytes
             elif attr.numeric:
                 value = str(int(value) if isinstance(value, bool) else value)
         return name, placeholder, value

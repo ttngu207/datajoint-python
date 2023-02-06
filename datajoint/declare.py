@@ -574,12 +574,6 @@ def substitute_special_type(match, category, foreign_key_sql, context):
             )
         match["store"] = match["type"].split("@", 1)[1]
         match["type"] = UUID_DATA_TYPE
-        foreign_key_sql.append(
-            "FOREIGN KEY (`{name}`) REFERENCES `{{database}}`.`{external_table_root}_{store}` (`hash`) "
-            "ON UPDATE RESTRICT ON DELETE RESTRICT".format(
-                external_table_root=EXTERNAL_TABLE_ROOT, **match
-            )
-        )
     elif category == "ADAPTED":
         adapter = get_adapter(context, match["type"])
         match["type"] = adapter.attribute_type

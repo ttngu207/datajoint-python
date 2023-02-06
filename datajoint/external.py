@@ -5,6 +5,7 @@ from datetime import datetime
 import logging
 import hashlib
 import inspect
+from uuid import UUID
 from .settings import config
 from .errors import DataJointError, MissingExternalFile
 from .hash import uuid_from_buffer, uuid_from_file
@@ -534,6 +535,7 @@ class FileSetTable(Table):
         if not self.is_declared:
             self.declare()
         self._file_part_table = None
+        self.File
 
     @property
     def definition(self):
@@ -625,26 +627,26 @@ class FileSetTable(Table):
                 self.external_table & external_uuids
             ).fetch("contents_hash", "size", order_by="hash")
             hashed = hashlib.md5()
-            for file_hash in content_hashes:
-                hashed.update(str(file_hash).encode())
+            for file_content_hash in content_hashes:
+                hashed.update(str(file_content_hash).encode())
 
-            fileset_id = hashed.hexdigest()
+            fileset_uuid = UUID(bytes=hashed.digest())
 
             self.insert1(
                 {
-                    "fileset_id": fileset_id,
+                    "fileset_id": fileset_uuid,
                     "fileset_size": sum(external_sizes),
                     "file_count": len(files),
                     "fileset_creation_time": datetime.utcnow(),
                 }
             )
-            self._File.insert(
+            self.File.insert(
                 [
-                    {"fileset_id": fileset_id, "hash": h["hash"], "file": f}
+                    {"fileset_id": fileset_uuid, "hash": h["hash"], "file": f}
                     for h, f in zip(external_uuids, files)
                 ]
             )
-            return fileset_id
+            return fileset_uuid
 
         # transaction-safe insert
         if not self.connection.in_transaction:
@@ -656,7 +658,7 @@ class FileSetTable(Table):
         return fileset_id
 
     def fetch_files(self, fileset_id):
-        return sorted((self._File & {"fileset_id": fileset_id}).fetch("file"))
+        return sorted((self.File & {"fileset_id": fileset_id}).fetch("file"))
 
 
 class FileSetMapping(Mapping):
