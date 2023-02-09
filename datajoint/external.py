@@ -1,3 +1,4 @@
+import os
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from collections.abc import Mapping
 from tqdm import tqdm
@@ -534,6 +535,7 @@ class FileSetTable(Table):
         self._support = [self.full_table_name]
         if not self.is_declared:
             self.declare()
+        self._stage = Path(self.external_table.spec["stage"]).absolute()
         self._file_part_table = None
         self.File
 
@@ -558,9 +560,10 @@ class FileSetTable(Table):
         def definition(self):
             return f"""
             -> master
-            hash  : uuid    #  hash of relative filepath (filepath)
+            hash  : uuid    #  hash of filename + contents (attach)
             ---
-            file: filepath@{self._store}
+            filepath: varchar(1000)  # filepath relative to the "root" of a given "fileset"
+            file: attach@{self._store}
             """
 
         @ClassProperty
@@ -622,6 +625,7 @@ class FileSetTable(Table):
             external_uuids = [
                 {"hash": self.external_table.upload_filepath(f)} for f in files
             ]
+            rel_filepaths = [f.relative_to(self._stage).as_posix() for f in files]
             # query the contents_hash to form fileset_id
             content_hashes, external_sizes = (
                 self.external_table & external_uuids
@@ -629,23 +633,32 @@ class FileSetTable(Table):
             hashed = hashlib.md5()
             for file_content_hash in content_hashes:
                 hashed.update(str(file_content_hash).encode())
+            for rel_fp in sorted(rel_filepaths):
+                hashed.update(str(rel_fp).encode())
 
             fileset_uuid = UUID(bytes=hashed.digest())
 
-            self.insert1(
-                {
-                    "fileset_id": fileset_uuid,
-                    "fileset_size": sum(external_sizes),
-                    "file_count": len(files),
-                    "fileset_creation_time": datetime.utcnow(),
-                }
-            )
-            self.File.insert(
-                [
-                    {"fileset_id": fileset_uuid, "hash": h["hash"], "file": f}
-                    for h, f in zip(external_uuids, files)
-                ]
-            )
+            if not (self & {"fileset_id": fileset_uuid}):
+                self.insert1(
+                    {
+                        "fileset_id": fileset_uuid,
+                        "fileset_size": sum(external_sizes),
+                        "file_count": len(files),
+                        "fileset_creation_time": datetime.utcnow(),
+                    }
+                )
+                self.File.insert(
+                    [
+                        {
+                            "fileset_id": fileset_uuid,
+                            "hash": h["hash"],
+                            "filepath": rel_fp,
+                            "file": f,
+                        }
+                        for h, rel_fp, f in zip(external_uuids, rel_filepaths, files)
+                    ]
+                )
+
             return fileset_uuid
 
         # transaction-safe insert
@@ -658,7 +671,17 @@ class FileSetTable(Table):
         return fileset_id
 
     def fetch_files(self, fileset_id):
-        return sorted((self.File & {"fileset_id": fileset_id}).fetch("file"))
+        fetched_files = []
+        for file_key in (self.File & {"fileset_id": fileset_id}).fetch("KEY"):
+            rel_fp = (self.File & file_key).fetch1("filepath")
+            fetched_files.append(
+                Path(
+                    (self.File & file_key).fetch1(
+                        "file", download_path=(self._stage / rel_fp).parent
+                    )
+                )
+            )
+        return sorted(fetched_files)
 
 
 class FileSetMapping(Mapping):

@@ -53,12 +53,20 @@ def _get(connection, attr, data, squeeze, download_path):
         if attr.is_external
         else None
     )
+    fileset = (
+        connection.schemas[attr.database].fileset[attr.store]
+        if attr.is_fileset
+        else None
+    )
 
     # apply attribute adapter if present
     adapt = attr.adapter.get if attr.adapter else lambda x: x
 
     if attr.is_filepath:
         return adapt(extern.download_filepath(uuid.UUID(bytes=data))[0])
+
+    if attr.is_fileset:
+        return adapt(fileset.fetch_files(uuid.UUID(bytes=data)))
 
     if attr.is_attachment:
         # Steps:
