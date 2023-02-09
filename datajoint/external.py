@@ -562,7 +562,7 @@ class FileSetTable(Table):
             -> master
             hash  : uuid    #  hash of filename + contents (attach)
             ---
-            filepath: varchar(1000)  # filepath relative to the "root" of a given "fileset"
+            filepath: varchar(1000)  # filepath relative to the "location" of the store
             file: attach@{self._store}
             """
 
@@ -623,7 +623,7 @@ class FileSetTable(Table):
         def insert():
             # upload to store and insert into external table
             external_uuids = [
-                {"hash": self.external_table.upload_filepath(f)} for f in files
+                {"hash": self.external_table.upload_attachment(f)} for f in files
             ]
             rel_filepaths = [f.relative_to(self._stage).as_posix() for f in files]
             # query the contents_hash to form fileset_id

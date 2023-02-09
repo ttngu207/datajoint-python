@@ -111,6 +111,7 @@ def safe_copy(src, dest, overwrite=False):
     src, dest = Path(src), Path(dest)
     if not (dest.exists() and src.samefile(dest)) and (overwrite or not dest.is_file()):
         dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.unlink(missing_ok=True)
         temp_file = dest.with_suffix(dest.suffix + ".copying")
         shutil.copyfile(str(src), str(temp_file))
         temp_file.rename(dest)
