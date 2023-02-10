@@ -544,6 +544,7 @@ class FileSetTable(Table):
         return """
         fileset_id: UUID  # identifier for a fileset - computed from the aggregated checksum of all files in the fileset
         ---
+        fileset_root: varchar(1000)     # the commonpath of all files in the fileset
         fileset_size: bigint unsigned   # size of the entire fileset in bytes
         file_count: int unsigned
         fileset_creation_time: datetime # creation time (UTC) of the fileset
@@ -603,6 +604,7 @@ class FileSetTable(Table):
             ), f"{fileset_fullpath} must be a valid directory"
 
             files = [f for f in fileset_fullpath.rglob("*") if f.is_file()]
+            fileset_root = fileset_fullpath
         elif isinstance(fileset_fullpath, list):
             files = []
             for f in fileset_fullpath:
@@ -612,6 +614,7 @@ class FileSetTable(Table):
                 if not f.exists():
                     raise FileNotFoundError(f"{f} not found!")
                 files.append(f)
+            fileset_root = os.path.commonpath(files)
         else:
             raise ValueError(
                 "fileset_fullpath must be a valid directory or list of valid filepaths"
@@ -642,6 +645,9 @@ class FileSetTable(Table):
                 self.insert1(
                     {
                         "fileset_id": fileset_uuid,
+                        "fileset_root": fileset_root.relative_to(
+                            self._stage
+                        ).as_posix(),
                         "fileset_size": sum(external_sizes),
                         "file_count": len(files),
                         "fileset_creation_time": datetime.utcnow(),
