@@ -614,7 +614,7 @@ class FileSetTable(Table):
                 if not f.exists():
                     raise FileNotFoundError(f"{f} not found!")
                 files.append(f)
-            fileset_root = os.path.commonpath(files)
+            fileset_root = Path(os.path.commonpath(files))
         else:
             raise ValueError(
                 "fileset_fullpath must be a valid directory or list of valid filepaths"
