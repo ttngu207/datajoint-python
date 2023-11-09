@@ -574,7 +574,7 @@ class FileSetTable(Table):
     @property
     def File(self):
         if self._file_part_table is None:
-            # delcare part-table File
+            # declare part-table File
             self._File._master = self
             self._File._store = self.store
             self._File.database = self.database
