@@ -312,6 +312,9 @@ class AutoPopulate:
         self.__class__._allow_insert = True
         try:
             make(dict(key), **(make_kwargs or {}))
+            assert (
+                key in self.target
+            ), f"key ({key}) not found in target ({self.target.table_name}) after successful make() call. Are you missing the insert into 'self' in the `make` function?"
         except (KeyboardInterrupt, SystemExit, Exception) as error:
             try:
                 self.connection.cancel_transaction()
