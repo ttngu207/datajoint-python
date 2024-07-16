@@ -163,7 +163,8 @@ class Fetch:
         format=None,
         as_dict=None,
         squeeze=False,
-        download_path="."
+        download_path=".",
+        download_external=True
     ):
         """
         Fetches the expression results from the database into an np.array or list of dictionaries and
@@ -182,6 +183,7 @@ class Fetch:
                         True for .fetch('KEY')
         :param squeeze:  if True, remove extra dimensions from arrays
         :param download_path: for fetches that download data, e.g. attachments
+        :param download_external: whether to download files if stored in external storage
         :return: the contents of the table in the form of a structured numpy.array or a dict list
         """
         if order_by is not None:
@@ -234,6 +236,7 @@ class Fetch:
             self._expression.connection,
             squeeze=squeeze,
             download_path=download_path,
+            download_external=download_external,
         )
         if attrs:  # a list of attributes provided
             attributes = [a for a in attrs if not is_key(a)]
@@ -246,6 +249,7 @@ class Fetch:
                 squeeze=squeeze,
                 download_path=download_path,
                 format="array",
+                download_external=download_external,
             )
             if attrs_as_dict:
                 ret = [
@@ -318,7 +322,7 @@ class Fetch1:
     def __init__(self, expression):
         self._expression = expression
 
-    def __call__(self, *attrs, squeeze=False, download_path="."):
+    def __call__(self, *attrs, squeeze=False, download_path=".", download_external=True):
         """
         Fetches the result of a query expression that yields one entry.
 
@@ -333,6 +337,7 @@ class Fetch1:
                  If attrs is empty, the return result is a dict
         :param squeeze:  When true, remove extra dimensions from arrays in attributes
         :param download_path: for fetches that download data, e.g. attachments
+        :param download_external: whether to download files if stored in external storage
         :return: the one tuple in the table in the form of a dict
         """
         heading = self._expression.heading
@@ -353,6 +358,7 @@ class Fetch1:
                         ret[name],
                         squeeze=squeeze,
                         download_path=download_path,
+                        download_external=download_external,
                     ),
                 )
                 for name in heading.names
@@ -360,7 +366,7 @@ class Fetch1:
         else:  # fetch some attributes, return as tuple
             attributes = [a for a in attrs if not is_key(a)]
             result = self._expression.proj(*attributes).fetch(
-                squeeze=squeeze, download_path=download_path, format="array"
+                squeeze=squeeze, download_path=download_path, format="array", download_external=download_external,
             )
             if len(result) != 1:
                 raise DataJointError(
