@@ -66,7 +66,7 @@ def _get(connection, attr, data, squeeze, download_path):
         return adapt(extern.download_filepath(uuid.UUID(bytes=data))[0])
 
     if attr.is_fileset:
-        return adapt(fileset.fetch_files(uuid.UUID(bytes=data)))
+        return adapt(fileset.download_fileset(uuid.UUID(bytes=data)))
 
     if attr.is_attachment:
         # Steps:
