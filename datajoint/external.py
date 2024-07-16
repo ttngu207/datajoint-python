@@ -561,10 +561,10 @@ class FileSetTable(Table):
         def definition(self):
             return f"""
             -> master
-            hash  : uuid    #  hash of filename + contents (attach)
+            hash  : uuid    #  hash of relative filepath (filepath)
             ---
             filepath: varchar(1000)  # filepath relative to the "location" of the store
-            file: attach@{self._store}
+            file: filepath@{self._store}
             """
 
         @ClassProperty
@@ -596,7 +596,7 @@ class FileSetTable(Table):
                 self._file_part_table.declare(context)
         return self._file_part_table
 
-    def insert_fileset(self, fileset_fullpath):
+    def upload_fileset(self, fileset_fullpath):
         if isinstance(fileset_fullpath, (str, Path)):
             fileset_fullpath = Path(fileset_fullpath)
             assert (
@@ -626,7 +626,7 @@ class FileSetTable(Table):
         def insert():
             # upload to store and insert into external table
             external_uuids = [
-                {"hash": self.external_table.upload_attachment(f)} for f in files
+                {"hash": self.external_table.upload_filepath(f)} for f in files
             ]
             rel_filepaths = [f.relative_to(self._stage).as_posix() for f in files]
             # query the contents_hash to form fileset_id
@@ -676,18 +676,8 @@ class FileSetTable(Table):
 
         return fileset_id
 
-    def fetch_files(self, fileset_id):
-        fetched_files = []
-        for file_key in (self.File & {"fileset_id": fileset_id}).fetch("KEY"):
-            rel_fp = (self.File & file_key).fetch1("filepath")
-            fetched_files.append(
-                Path(
-                    (self.File & file_key).fetch1(
-                        "file", download_path=(self._stage / rel_fp).parent
-                    )
-                )
-            )
-        return sorted(fetched_files)
+    def download_fileset(self, fileset_id):
+        return sorted((self.File & {"fileset_id": fileset_id}).fetch("file"))
 
 
 class FileSetMapping(Mapping):
