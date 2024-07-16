@@ -1,22 +1,18 @@
 """
 A simple, abstract schema to test relational algebra
 """
+
 import random
 import datajoint as dj
 import itertools
 import hashlib
 import uuid
 import faker
-
-
-from . import PREFIX, CONN_INFO
 import numpy as np
 from datetime import date, timedelta
+import inspect
 
-schema = dj.Schema(PREFIX + "_relational", locals(), connection=dj.conn(**CONN_INFO))
 
-
-@schema
 class IJ(dj.Lookup):
     definition = """  # tests restrictions
     i  : int
@@ -25,7 +21,6 @@ class IJ(dj.Lookup):
     contents = list(dict(i=i, j=j + 2) for i in range(3) for j in range(3))
 
 
-@schema
 class JI(dj.Lookup):
     definition = """  # tests restrictions by relations when attributes are reordered
     j  : int
@@ -34,7 +29,6 @@ class JI(dj.Lookup):
     contents = list(dict(i=i + 1, j=j) for i in range(3) for j in range(3))
 
 
-@schema
 class A(dj.Lookup):
     definition = """
     id_a :int
@@ -44,7 +38,6 @@ class A(dj.Lookup):
     contents = [(i, i % 4 > i % 3) for i in range(10)]
 
 
-@schema
 class B(dj.Computed):
     definition = """
     -> A
@@ -78,7 +71,6 @@ class B(dj.Computed):
             )
 
 
-@schema
 class L(dj.Lookup):
     definition = """
     id_l: int
@@ -88,7 +80,6 @@ class L(dj.Lookup):
     contents = [(i, i % 3 >= i % 5) for i in range(30)]
 
 
-@schema
 class D(dj.Computed):
     definition = """
     -> A
@@ -104,7 +95,6 @@ class D(dj.Computed):
         self.insert(dict(key, id_d=i, **random.choice(lookup)) for i in range(4))
 
 
-@schema
 class E(dj.Computed):
     definition = """
     -> B
@@ -134,7 +124,6 @@ class E(dj.Computed):
         )
 
 
-@schema
 class F(dj.Manual):
     definition = """
     id: int
@@ -143,7 +132,6 @@ class F(dj.Manual):
     """
 
 
-@schema
 class DataA(dj.Lookup):
     definition = """
     idx     : int
@@ -153,7 +141,6 @@ class DataA(dj.Lookup):
     contents = list(zip(range(5), range(5)))
 
 
-@schema
 class DataB(dj.Lookup):
     definition = """
     idx     : int
@@ -163,7 +150,6 @@ class DataB(dj.Lookup):
     contents = list(zip(range(5), range(5, 10)))
 
 
-@schema
 class Website(dj.Lookup):
     definition = """
     url_hash : uuid
@@ -179,7 +165,6 @@ class Website(dj.Lookup):
         return url_hash
 
 
-@schema
 class Profile(dj.Manual):
     definition = """
     ssn : char(11)
@@ -212,7 +197,6 @@ class Profile(dj.Manual):
                     )
 
 
-@schema
 class TTestUpdate(dj.Lookup):
     definition = """
     primary_key     : int
@@ -228,7 +212,6 @@ class TTestUpdate(dj.Lookup):
     ]
 
 
-@schema
 class ArgmaxTest(dj.Lookup):
     definition = """
     primary_key     : int
@@ -249,20 +232,18 @@ class ArgmaxTest(dj.Lookup):
         )
 
 
-@schema
 class ReservedWord(dj.Manual):
     definition = """
     # Test of SQL reserved words
     key : int
     ---
-    in    :  varchar(25)    
-    from  :  varchar(25)   
+    in    :  varchar(25)
+    from  :  varchar(25)
     int   :  int
     select : varchar(25)
     """
 
 
-@schema
 class OutfitLaunch(dj.Lookup):
     definition = """
     # Monthly released designer outfits
@@ -279,3 +260,7 @@ class OutfitLaunch(dj.Lookup):
         piece: varchar(20)
         """
         contents = [(0, "jeans"), (0, "sneakers"), (0, "polo")]
+
+
+LOCALS_SIMPLE = {k: v for k, v in locals().items() if inspect.isclass(v)}
+__all__ = list(LOCALS_SIMPLE)

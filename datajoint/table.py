@@ -8,13 +8,14 @@ import logging
 import uuid
 import csv
 import re
+import json
 from pathlib import Path
 from .settings import config
 from .declare import declare, alter
 from .condition import make_condition
 from .expression import QueryExpression
 from . import blob
-from .utils import user_choice, get_master
+from .utils import user_choice, get_master, is_camel_case
 from .heading import Heading
 from .errors import (
     DuplicateError,
@@ -75,6 +76,10 @@ class Table(QueryExpression):
         return self._table_name
 
     @property
+    def class_name(self):
+        return self.__class__.__name__
+
+    @property
     def definition(self):
         raise NotImplementedError(
             "Subclasses of Table must implement the `definition` property"
@@ -91,6 +96,14 @@ class Table(QueryExpression):
             raise DataJointError(
                 "Cannot declare new tables inside a transaction, "
                 "e.g. from inside a populate/make call"
+            )
+        # Enforce strict CamelCase #1150
+        if not is_camel_case(self.class_name):
+            raise DataJointError(
+                "Table class name `{name}` is invalid. Please use CamelCase. ".format(
+                    name=self.class_name
+                )
+                + "Classes defining tables should be formatted in strict CamelCase."
             )
         sql, external_stores = declare(self.full_table_name, self.definition, context)
         sql = sql.format(database=self.database)
@@ -118,11 +131,11 @@ class Table(QueryExpression):
             frame = inspect.currentframe().f_back
             context = dict(frame.f_globals, **frame.f_locals)
             del frame
-        old_definition = self.describe(context=context, printout=False)
+        old_definition = self.describe(context=context)
         sql, external_stores = alter(self.definition, old_definition, context)
         if not sql:
             if prompt:
-                print("Nothing to alter.")
+                logger.warn("Nothing to alter.")
         else:
             sql = "ALTER TABLE {tab}\n\t".format(
                 tab=self.full_table_name
@@ -142,7 +155,7 @@ class Table(QueryExpression):
                         table_info=self.heading.table_info
                     )
                     if prompt:
-                        print("Table altered")
+                        logger.info("Table altered")
                     self._log("Altered " + self.full_table_name)
 
     def from_clause(self):
@@ -229,7 +242,7 @@ class Table(QueryExpression):
 
     def parts(self, as_objects=False):
         """
-        return part tables either as entries in a dict with foreign key informaiton or a list of objects
+        return part tables either as entries in a dict with foreign key information or a list of objects
 
         :param as_objects: if False (default), the output is a dict describing the foreign keys. If True, return table objects.
         """
@@ -550,6 +563,7 @@ class Table(QueryExpression):
                         and match["fk_attrs"] == match["pk_attrs"]
                     ):
                         child._restriction = table._restriction
+                        child._restriction_attributes = table.restriction_attributes
                     elif match["fk_attrs"] != match["pk_attrs"]:
                         child &= table.proj(
                             **dict(zip(match["fk_attrs"], match["pk_attrs"]))
@@ -607,7 +621,7 @@ class Table(QueryExpression):
         # Confirm and commit
         if delete_count == 0:
             if safemode:
-                print("Nothing to delete.")
+                logger.warn("Nothing to delete.")
             if transaction:
                 self.connection.cancel_transaction()
         else:
@@ -615,12 +629,12 @@ class Table(QueryExpression):
                 if transaction:
                     self.connection.commit_transaction()
                 if safemode:
-                    print("Deletes committed.")
+                    logger.info("Deletes committed.")
             else:
                 if transaction:
                     self.connection.cancel_transaction()
                 if safemode:
-                    print("Deletes cancelled")
+                    logger.warn("Deletes cancelled")
         return delete_count
 
     def drop_quick(self):
@@ -666,12 +680,14 @@ class Table(QueryExpression):
 
         if config["safemode"]:
             for table in tables:
-                print(table, "(%d tuples)" % len(FreeTable(self.connection, table)))
+                logger.info(
+                    table + " (%d tuples)" % len(FreeTable(self.connection, table))
+                )
             do_drop = user_choice("Proceed?", default="no") == "yes"
         if do_drop:
             for table in reversed(tables):
                 FreeTable(self.connection, table).drop_quick()
-            print("Tables dropped.  Restart kernel.")
+            logger.info("Tables dropped. Restart kernel.")
 
     @property
     def size_on_disk(self):
@@ -691,7 +707,7 @@ class Table(QueryExpression):
             "show_definition is deprecated. Use the describe method instead."
         )
 
-    def describe(self, context=None, printout=True):
+    def describe(self, context=None, printout=False):
         """
         :return:  the definition string for the query using DataJoint DDL.
         """
@@ -759,9 +775,11 @@ class Table(QueryExpression):
             if do_include:
                 attributes_declared.add(attr.name)
                 definition += "%-20s : %-28s %s\n" % (
-                    attr.name
-                    if attr.default is None
-                    else "%s=%s" % (attr.name, attr.default),
+                    (
+                        attr.name
+                        if attr.default is None
+                        else "%s=%s" % (attr.name, attr.default)
+                    ),
                     "%s%s"
                     % (attr.type, " auto_increment" if attr.autoincrement else ""),
                     "# " + attr.comment if attr.comment else "",
@@ -772,60 +790,8 @@ class Table(QueryExpression):
                 unique="UNIQUE " if v["unique"] else "", attrs=", ".join(k)
             )
         if printout:
-            print(definition)
+            logger.info("\n" + definition)
         return definition
-
-    def _update(self, attrname, value=None):
-        """
-        This is a deprecated function to be removed in datajoint 0.14.
-        Use ``.update1`` instead.
-
-        Updates a field in one existing tuple. self must be restricted to exactly one entry.
-        In DataJoint the principal way of updating data is to delete and re-insert the
-        entire record and updates are reserved for corrective actions.
-        This is because referential integrity is observed on the level of entire
-        records rather than individual attributes.
-
-        Safety constraints:
-           1. self must be restricted to exactly one tuple
-           2. the update attribute must not be in primary key
-
-        Example:
-        >>> (v2p.Mice() & key)._update('mouse_dob', '2011-01-01')
-        >>> (v2p.Mice() & key)._update( 'lens')   # set the value to NULL
-        """
-        logger.warning(
-            "`_update` is a deprecated function to be removed in datajoint 0.14. "
-            "Use `.update1` instead."
-        )
-        if len(self) != 1:
-            raise DataJointError("Update is only allowed on one tuple at a time")
-        if attrname not in self.heading:
-            raise DataJointError("Invalid attribute name")
-        if attrname in self.heading.primary_key:
-            raise DataJointError("Cannot update a key value.")
-
-        attr = self.heading[attrname]
-
-        if attr.is_blob:
-            value = blob.pack(value)
-            placeholder = "%s"
-        elif attr.numeric:
-            if value is None or np.isnan(float(value)):  # nans are turned into NULLs
-                placeholder = "NULL"
-                value = None
-            else:
-                placeholder = "%s"
-                value = str(int(value) if isinstance(value, bool) else value)
-        else:
-            placeholder = "%s" if value is not None else "NULL"
-        command = "UPDATE {full_table_name} SET `{attrname}`={placeholder} {where_clause}".format(
-            full_table_name=self.from_clause(),
-            attrname=attrname,
-            placeholder=placeholder,
-            where_clause=self.where_clause(),
-        )
-        self.connection.query(command, args=(value,) if value is not None else ())
 
     # --- private helper functions ----
     def __make_placeholder(self, name, value, ignore_extra_fields=False):
@@ -887,6 +853,8 @@ class Table(QueryExpression):
                 value = self.fileset[attr.store].upload_fileset(value).bytes
             elif attr.numeric:
                 value = str(int(value) if isinstance(value, bool) else value)
+            elif attr.json:
+                value = json.dumps(value)
         return name, placeholder, value
 
     def __make_row_to_insert(self, row, field_list, ignore_extra_fields):

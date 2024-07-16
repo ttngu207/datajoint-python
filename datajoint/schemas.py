@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__.split(".")[0])
 
 def ordered_dir(class_):
     """
-    List (most) attributes of the class including inherited ones, similar to `dir` build-in function,
+    List (most) attributes of the class including inherited ones, similar to `dir` built-in function,
     but respects order of attribute declaration as much as possible.
 
     :param class_: class to list members for
@@ -448,7 +448,7 @@ class Schema:
                 defi=re.sub(
                     r"`([^`]+)`.`([^`]+)`",
                     replace,
-                    FreeTable(self.connection, table).describe(printout=False),
+                    FreeTable(self.connection, table).describe(),
                 ).replace("\n", "\n    " + indent),
             )
 
