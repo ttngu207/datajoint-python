@@ -34,7 +34,7 @@ def to_dicts(recarray):
         yield dict(zip(recarray.dtype.names, rec.tolist()))
 
 
-def _get(connection, attr, data, squeeze, download_path):
+def _get(connection, attr, data, squeeze, download_path, *, download_external=True):
     """
     This function is called for every attribute
 
@@ -43,6 +43,7 @@ def _get(connection, attr, data, squeeze, download_path):
     :param data: literal value fetched from the table
     :param squeeze: if True squeeze blobs
     :param download_path: for fetches that download data, e.g. attachments
+    :param download_external: whether to download files if stored in external storage
     :return: unpacked data
     """
     if data is None:
@@ -63,10 +64,10 @@ def _get(connection, attr, data, squeeze, download_path):
     adapt = attr.adapter.get if attr.adapter else lambda x: x
 
     if attr.is_filepath:
-        return adapt(extern.download_filepath(uuid.UUID(bytes=data))[0])
+        return adapt(extern.download_filepath(uuid.UUID(bytes=data), download_external=download_external)[0])
 
     if attr.is_fileset:
-        return adapt(fileset.download_fileset(uuid.UUID(bytes=data)))
+        return adapt(fileset.download_fileset(uuid.UUID(bytes=data), download_external=download_external))
 
     if attr.is_attachment:
         # Steps:
@@ -104,7 +105,7 @@ def _get(connection, attr, data, squeeze, download_path):
                 ):
                     return adapt(str(f))  # checksum passed, no need to download again
         # Save attachment
-        if attr.is_external:
+        if attr.is_external and download_external:
             extern.download_attachment(_uuid, attachment_name, local_filepath)
         else:
             # write from buffer

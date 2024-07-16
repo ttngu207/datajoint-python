@@ -301,11 +301,12 @@ class ExternalTable(Table):
             )
         return uuid
 
-    def download_filepath(self, filepath_hash):
+    def download_filepath(self, filepath_hash, download_external=True):
         """
         sync a file from external store to the local stage
 
         :param filepath_hash: The hash (UUID) of the relative_path
+        :param download_external: whether to download files if stored in external storage
         :return: hash (UUID) of the contents of the downloaded file or Nones
         """
 
@@ -326,25 +327,27 @@ class ExternalTable(Table):
             external_path = self._make_external_filepath(relative_filepath)
             local_filepath = Path(self.spec["stage"]).absolute() / relative_filepath
 
-            file_exists = Path(local_filepath).is_file() and (
-                not _need_checksum(local_filepath, size)
-                or uuid_from_file(local_filepath) == contents_hash
-            )
-
-            if not file_exists:
-                self._download_file(external_path, local_filepath)
-                if (
-                    _need_checksum(local_filepath, size)
-                    and uuid_from_file(local_filepath) != contents_hash
-                ):
-                    # this should never happen without outside interference
-                    raise DataJointError(
-                        f"'{local_filepath}' downloaded but did not pass checksum."
-                    )
-            if not _need_checksum(local_filepath, size):
-                logger.warning(
-                    f"Skipped checksum for file with hash: {contents_hash}, and path: {local_filepath}"
+            if download_external:
+                file_exists = Path(local_filepath).is_file() and (
+                    not _need_checksum(local_filepath, size)
+                    or uuid_from_file(local_filepath) == contents_hash
                 )
+
+                if not file_exists:
+                    self._download_file(external_path, local_filepath)
+                    if (
+                        _need_checksum(local_filepath, size)
+                        and uuid_from_file(local_filepath) != contents_hash
+                    ):
+                        # this should never happen without outside interference
+                        raise DataJointError(
+                            f"'{local_filepath}' downloaded but did not pass checksum."
+                        )
+                if not _need_checksum(local_filepath, size):
+                    logger.warning(
+                        f"Skipped checksum for file with hash: {contents_hash}, and path: {local_filepath}"
+                    )
+
             return str(local_filepath), contents_hash
 
     # --- UTILITIES ---
@@ -676,8 +679,12 @@ class FileSetTable(Table):
 
         return fileset_id
 
-    def download_fileset(self, fileset_id):
-        return sorted((self.File & {"fileset_id": fileset_id}).fetch("file"))
+    def download_fileset(self, fileset_id, download_external=True):
+        return sorted(
+            (self.File & {"fileset_id": fileset_id}).fetch(
+                "file", download_external=download_external
+            )
+        )
 
 
 class FileSetMapping(Mapping):
