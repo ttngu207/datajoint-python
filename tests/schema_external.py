@@ -86,8 +86,8 @@ class FilepathS3(dj.Manual):
 
 class Fileset(dj.Manual):
     definition = """
-    # table for file management
-    fnum : int # test comment containing :
+    # table for fileset management
+    fnum : int
     ---
     files : fileset@repo  # managed fileset
     """
@@ -95,7 +95,7 @@ class Fileset(dj.Manual):
 
 class FilesetS3(dj.Manual):
     definition = """
-    # table for file management
+    # table for fileset management
     fnum : int
     ---
     files : fileset@repo-s3  # managed fileset

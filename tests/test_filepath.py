@@ -78,7 +78,8 @@ def test_filepath(enable_filepath_feature, schema_ext, store):
 
     # cleanup
     ext.delete(delete_external_files=True)
-    assert not ext.exists(ext._make_external_filepath(str(Path(relpath, filename))))
+    assert not ext.exists(ext._make_external_filepath(
+        str(Path(relpath, filename))))
 
 
 @pytest.mark.parametrize("store", ("repo", "repo-s3"))
@@ -91,7 +92,8 @@ def test_duplicate_upload(schema_ext, store):
     with managed_file.open("wb") as f:
         f.write(os.urandom(300))
     ext.upload_filepath(str(managed_file))
-    ext.upload_filepath(str(managed_file))  # this is fine because the file is the same
+    # this is fine because the file is the same
+    ext.upload_filepath(str(managed_file))
 
 
 @pytest.mark.parametrize("store", ("repo", "repo-s3"))
@@ -184,7 +186,8 @@ class TestFilepath:
         stream_handler.setFormatter(log_format)
         stream_handler.set_name("test_limit_warning")
         logger.addHandler(stream_handler)
-        self._test_filepath_class(table=Filepath(), store="repo", verify_checksum=False)
+        self._test_filepath_class(
+            table=Filepath(), store="repo", verify_checksum=False)
         log_contents = log_capture.getvalue()
         log_capture.close()
         for handler in logger.handlers:  # Clean up handler
@@ -206,7 +209,8 @@ def test_filepath_cleanup(table, store, schema_ext, enable_filepath_feature):
     n = 20
     contents = os.urandom(345)
     for i in range(n):
-        relative_path = Path(*random.sample(("one", "two", "three", "four"), k=3))
+        relative_path = Path(
+            *random.sample(("one", "two", "three", "four"), k=3))
         managed_file = Path(stage_path, relative_path, "file.dat")
         managed_file.parent.mkdir(parents=True, exist_ok=True)
         with managed_file.open("wb") as f:

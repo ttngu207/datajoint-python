@@ -11,15 +11,15 @@ import io
 @pytest.mark.parametrize(
     "table, store",
     (
-            (Fileset(), "repo"),
-            (FilesetS3(), "repo-s3"),
+        (Fileset(), "repo"),
+        (FilesetS3(), "repo-s3"),
     ),
 )
 def test_fileset_insert(table, store, schema_ext):
     stage_path = dj.config["stores"][store]["stage"]
     relative_path = "four/five/six"
 
-    fileset_dir = Path(stage_path, relative_path)
+    fileset_dir = Path(stage_path) / relative_path
 
     # create mock files
     for fname in range(10):
@@ -38,7 +38,7 @@ def test_fileset_insert(table, store, schema_ext):
     table.insert1((0, fileset1))
 
     files = (table & {"fnum": 0}).fetch1("files")
-    assert set(files) == set(fileset_dir.glob("*"))
+    assert set(files) == set(str(f) for f in fileset_dir.glob("*"))
 
     # test insert same fileset in another row
     table.insert1((1, fileset1))
@@ -49,15 +49,16 @@ def test_fileset_insert(table, store, schema_ext):
     # test insert fileset2 & fileset3
     table.insert([(2, fileset2), (3, fileset3)])
     assert len(table.fileset[store]) == 3
-    assert len(table.fileset[store].File) == len(files) + len(fileset2) + len(fileset3)
+    assert len(table.fileset[store].File) == len(
+        files) + len(fileset2) + len(fileset3)
     assert len(table.external[store]) == len(files)
 
 
 @pytest.mark.parametrize(
     "table, store",
     (
-            (Fileset(), "repo"),
-            (FilesetS3(), "repo-s3"),
+        (Fileset(), "repo"),
+        (FilesetS3(), "repo-s3"),
     ),
 )
 def test_fileset_fetch(table, store, schema_ext):
@@ -92,8 +93,8 @@ def test_fileset_fetch(table, store, schema_ext):
 @pytest.mark.parametrize(
     "table, store",
     (
-            (Fileset(), "repo"),
-            (FilesetS3(), "repo-s3"),
+        (Fileset(), "repo"),
+        (FilesetS3(), "repo-s3"),
     ),
 )
 def test_fileset_cleanup(table, store, schema_ext):
@@ -138,7 +139,7 @@ def test_fileset_cleanup(table, store, schema_ext):
     assert len(table.external[store]) == len(fileset1) - len(fileset2)
 
     # deleting fnum 3 should mark all files as unused
-    (table & {"fnum": 2}).delete()
+    (table & {"fnum": 3}).delete()
     count = table.fileset[store].delete()
     assert count == 1
 
