@@ -31,7 +31,7 @@ def subfold(name, folds):
     subfolding for external storage:   e.g.  subfold('aBCdefg', (2, 3))  -->  ['ab','cde']
     """
     return (
-        (name[: folds[0]].lower(),) + subfold(name[folds[0] :], folds[1:])
+        (name[: folds[0]].lower(),) + subfold(name[folds[0]:], folds[1:])
         if folds
         else ()
     )
@@ -197,7 +197,8 @@ class ExternalTable(Table):
         cache_folder = config.get("cache", None)
         if cache_folder:
             try:
-                cache_path = Path(cache_folder, *subfold(uuid.hex, CACHE_SUBFOLDING))
+                cache_path = Path(
+                    cache_folder, *subfold(uuid.hex, CACHE_SUBFOLDING))
                 cache_file = Path(cache_path, uuid.hex)
                 blob = cache_file.read_bytes()
             except FileNotFoundError:
@@ -325,7 +326,8 @@ class ExternalTable(Table):
                 self & {"hash": filepath_hash}
             ).fetch1("filepath", "contents_hash", "size")
             external_path = self._make_external_filepath(relative_filepath)
-            local_filepath = Path(self.spec["stage"]).absolute() / relative_filepath
+            local_filepath = Path(
+                self.spec["stage"]).absolute() / relative_filepath
 
             if download_external:
                 file_exists = Path(local_filepath).is_file() and (
@@ -371,7 +373,8 @@ class ExternalTable(Table):
         for item in self.fetch("hash", "attachment_name", "filepath", **fetch_kwargs):
             if item["attachment_name"]:
                 # attachments
-                path = self._make_uuid_path(item["hash"], "." + item["attachment_name"])
+                path = self._make_uuid_path(
+                    item["hash"], "." + item["attachment_name"])
             elif item["filepath"]:
                 # external filepaths
                 path = self._make_external_filepath(item["filepath"])
@@ -494,6 +497,33 @@ class ExternalMapping(Mapping):
         return iter(self._tables)
 
 
+class FileTable(Part):
+
+    def __init__(self, master):
+        self._master = master
+        self._store = self._master.store
+        self.database = self._master.database
+        self.connection = self._master.connection
+
+    @property
+    def definition(self):
+        return f"""
+        -> master
+        file_hash  : uuid    #  hash of relative filepath (filepath)
+        ---
+        filepath: varchar(1000)  # filepath relative to the "location" of the store
+        file: filepath@{self._store}
+        """
+
+    @property
+    def table_name(self):
+        return f"{self._master.external_table.table_name}_fileset__file"
+
+    @property
+    def full_table_name(self):
+        return f"`{self._master.database}`.`{self.table_name}`"
+
+
 class FileSetTable(Table):
     """
     The table tracking fileset - collection of files - from externally stored objects.
@@ -535,46 +565,29 @@ class FileSetTable(Table):
     def table_name(self):
         return f"{self.external_table.table_name}_fileset"
 
-    class FileTable(Part):
-        _store = None
-
-        @property
-        def definition(self):
-            return f"""
-            -> master
-            file_hash  : uuid    #  hash of relative filepath (filepath)
-            ---
-            filepath: varchar(1000)  # filepath relative to the "location" of the store
-            file: filepath@{self._store}
-            """
-
-        @ClassProperty
-        def table_name(cls):
-            return f"{cls._master.external_table.table_name}_fileset__file"
-
     @property
     def File(self):
         if self._File is None:
             # declare part-table File
-            self.FileTable._master = self
-            self.FileTable._store = self.store
-            self.FileTable.database = self.database
-            self.FileTable._connection = self.connection
+            self._File = FileTable(master=self)
+
             context = dict(
-                inspect.currentframe().f_locals, master=self, self=self.FileTable
+                inspect.currentframe().f_locals, master=self, self=self._File
             )
-            self.FileTable._heading = Heading(
+
+            self._File._heading = Heading(
                 table_info=dict(
                     conn=self.connection,
                     database=self.database,
-                    table_name=self.FileTable.table_name,
+                    table_name=self._File.table_name,
                     context=context,
                 )
             )
-            self.FileTable._support = [self.FileTable.full_table_name]
-            self._File = self.FileTable
-            if not self._File().is_declared:
-                self._File().declare(context)
+            self._File._support = [self._File.full_table_name]
+
+            if not self._File.is_declared:
+                self._File.declare(context)
+            self._File.describe()
         return self._File
 
     def upload_fileset(self, fileset_fullpath):
@@ -609,7 +622,8 @@ class FileSetTable(Table):
             external_uuids = [
                 {"hash": self.external_table.upload_filepath(f)} for f in files
             ]
-            rel_filepaths = [f.relative_to(self._stage).as_posix() for f in files]
+            rel_filepaths = [f.relative_to(
+                self._stage).as_posix() for f in files]
             # query the contents_hash to form fileset_id
             content_hashes, external_sizes = (
                 self.external_table & external_uuids
@@ -697,7 +711,7 @@ class FileSetTable(Table):
     def delete(self):
         with self.connection.transaction:
             (self.File & self.unused().fetch("KEY")).delete_quick()
-            count = self.unused().delete_quick()
+            count = self.unused().delete_quick(get_count=True)
         return count
 
 
