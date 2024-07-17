@@ -357,19 +357,7 @@ class ExternalTable(Table):
         """
         :return: generator of referencing table names and their referencing columns
         """
-        return (
-            {k.lower(): v for k, v in elem.items()}
-            for elem in self.connection.query(
-                """
-        SELECT concat('`', table_schema, '`.`', table_name, '`') as referencing_table, column_name
-        FROM information_schema.key_column_usage
-        WHERE referenced_table_name="{tab}" and referenced_table_schema="{db}"
-        """.format(
-                    tab=self.table_name, db=self.database
-                ),
-                as_dict=True,
-            )
-        )
+        return _get_references(self)
 
     def fetch_external_paths(self, **fetch_kwargs):
         """
@@ -399,12 +387,7 @@ class ExternalTable(Table):
 
         :return: self restricted to elements that are not in use by any tables in the schema
         """
-        return self - [
-            FreeTable(self.connection, ref["referencing_table"]).proj(
-                hash=ref["column_name"]
-            )
-            for ref in self.references
-        ]
+        return _unused(self, attr_name="hash")
 
     def used(self):
         """
@@ -412,12 +395,7 @@ class ExternalTable(Table):
 
         :return: self restricted to elements that in use by tables in the schema
         """
-        return self & [
-            FreeTable(self.connection, ref["referencing_table"]).proj(
-                hash=ref["column_name"]
-            )
-            for ref in self.references
-        ]
+        return _used(self, attr_name="hash")
 
     def delete(
         self,
@@ -539,7 +517,7 @@ class FileSetTable(Table):
         if not self.is_declared:
             self.declare()
         self._stage = Path(self.external_table.spec["stage"]).absolute()
-        self._file_part_table = None
+        self._File = None
         self.File
 
     @property
@@ -557,14 +535,14 @@ class FileSetTable(Table):
     def table_name(self):
         return f"{self.external_table.table_name}_fileset"
 
-    class _File(Part):
+    class FileTable(Part):
         _store = None
 
         @property
         def definition(self):
             return f"""
             -> master
-            hash  : uuid    #  hash of relative filepath (filepath)
+            file_hash  : uuid    #  hash of relative filepath (filepath)
             ---
             filepath: varchar(1000)  # filepath relative to the "location" of the store
             file: filepath@{self._store}
@@ -576,28 +554,28 @@ class FileSetTable(Table):
 
     @property
     def File(self):
-        if self._file_part_table is None:
+        if self._File is None:
             # declare part-table File
-            self._File._master = self
-            self._File._store = self.store
-            self._File.database = self.database
-            self._File._connection = self.connection
+            self.FileTable._master = self
+            self.FileTable._store = self.store
+            self.FileTable.database = self.database
+            self.FileTable._connection = self.connection
             context = dict(
-                inspect.currentframe().f_locals, master=self, self=self._File
+                inspect.currentframe().f_locals, master=self, self=self.FileTable
             )
-            self._File._heading = Heading(
+            self.FileTable._heading = Heading(
                 table_info=dict(
                     conn=self.connection,
                     database=self.database,
-                    table_name=self._File.table_name,
+                    table_name=self.FileTable.table_name,
                     context=context,
                 )
             )
-            self._File._support = [self._File.full_table_name]
-            self._file_part_table = self._File()
-            if not self._file_part_table.is_declared:
-                self._file_part_table.declare(context)
-        return self._file_part_table
+            self.FileTable._support = [self.FileTable.full_table_name]
+            self._File = self.FileTable
+            if not self._File().is_declared:
+                self._File().declare(context)
+        return self._File
 
     def upload_fileset(self, fileset_fullpath):
         if isinstance(fileset_fullpath, (str, Path)):
@@ -660,7 +638,7 @@ class FileSetTable(Table):
                     [
                         {
                             "fileset_id": fileset_uuid,
-                            "hash": h["hash"],
+                            "file_hash": h["hash"],
                             "filepath": rel_fp,
                             "file": f,
                         }
@@ -685,6 +663,41 @@ class FileSetTable(Table):
                 "file", download_external=download_external
             )
         )
+
+    @property
+    def references(self):
+        """
+        :return: generator of referencing table names and their referencing columns (excluding the part-table File)
+        """
+        return (
+            r
+            for r in _get_references(self)
+            if not r["referencing_table"]
+            .split(".")[-1]
+            .strip("`")
+            .startswith(self.table_name)
+        )
+
+    def unused(self):
+        """
+        query expression for unused hashes
+
+        :return: self restricted to elements that are not in use by any tables in the schema
+        """
+        return _unused(self, attr_name="fileset_id")
+
+    def used(self):
+        """
+        query expression for used hashes
+
+        :return: self restricted to elements that in use by tables in the schema
+        """
+        return _used(self, attr_name="fileset_id")
+
+    def delete(self):
+        with self.connection.transaction:
+            (self.File & self.unused().fetch("KEY")).delete_quick()
+            self.unused().delete_quick()
 
 
 class FileSetMapping(Mapping):
@@ -724,3 +737,53 @@ class FileSetMapping(Mapping):
 
     def __iter__(self):
         return iter(self._tables)
+
+
+# ---- UTILITIES ----
+
+
+def _get_references(table):
+    """
+    :return: generator of referencing table names and their referencing columns
+    """
+    return (
+        {k.lower(): v for k, v in elem.items()}
+        for elem in table.connection.query(
+            """
+    SELECT concat('`', table_schema, '`.`', table_name, '`') as referencing_table, column_name
+    FROM information_schema.key_column_usage
+    WHERE referenced_table_name="{tab}" and referenced_table_schema="{db}"
+    """.format(
+                tab=table.table_name, db=table.database
+            ),
+            as_dict=True,
+        )
+    )
+
+
+def _unused(table, attr_name):
+    """
+    query expression for unused hashes
+
+    :return: self restricted to elements that are not in use by any tables in the schema
+    """
+    return table - [
+        FreeTable(table.connection, ref["referencing_table"]).proj(
+            **{attr_name: ref["column_name"]}
+        )
+        for ref in table.references
+    ]
+
+
+def _used(table, attr_name):
+    """
+    query expression for used hashes
+
+    :return: self restricted to elements that in use by tables in the schema
+    """
+    return table & [
+        FreeTable(table.connection, ref["referencing_table"]).proj(
+            **{attr_name: ref["column_name"]}
+        )
+        for ref in table.references
+    ]

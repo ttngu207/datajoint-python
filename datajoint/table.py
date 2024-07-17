@@ -111,6 +111,8 @@ class Table(QueryExpression):
             # declare all external tables before declaring main table
             for store in external_stores:
                 self.connection.schemas[self.database].external[store]
+                if f"fileset@{store}" in self.definition:
+                    self.connection.schemas[self.database].fileset[store]
             self.connection.query(sql)
         except AccessError:
             # skip if no create privilege
