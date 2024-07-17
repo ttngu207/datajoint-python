@@ -697,7 +697,8 @@ class FileSetTable(Table):
     def delete(self):
         with self.connection.transaction:
             (self.File & self.unused().fetch("KEY")).delete_quick()
-            self.unused().delete_quick()
+            count = self.unused().delete_quick()
+        return count
 
 
 class FileSetMapping(Mapping):
