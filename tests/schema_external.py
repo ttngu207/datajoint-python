@@ -84,5 +84,23 @@ class FilepathS3(dj.Manual):
     """
 
 
+class Fileset(dj.Manual):
+    definition = """
+    # table for file management
+    fnum : int # test comment containing :
+    ---
+    files : fileset@repo  # managed fileset
+    """
+
+
+class FilesetS3(dj.Manual):
+    definition = """
+    # table for file management
+    fnum : int
+    ---
+    files : fileset@repo-s3  # managed fileset
+    """
+
+
 LOCALS_EXTERNAL = {k: v for k, v in locals().items() if inspect.isclass(v)}
 __all__ = list(LOCALS_EXTERNAL)

@@ -15,6 +15,7 @@ from datajoint import errors
 from datajoint.errors import (
     ADAPTED_TYPE_SWITCH,
     FILEPATH_FEATURE_SWITCH,
+    FILESET_FEATURE_SWITCH,
     DataJointError,
 )
 from . import (
@@ -56,6 +57,13 @@ def enable_filepath_feature(monkeypatch):
     monkeypatch.setenv(FILEPATH_FEATURE_SWITCH, "TRUE")
     yield
     monkeypatch.delenv(FILEPATH_FEATURE_SWITCH, raising=True)
+
+
+@pytest.fixture
+def enable_fileset_feature(monkeypatch, enable_filepath_feature):
+    monkeypatch.setenv(FILESET_FEATURE_SWITCH, "TRUE")
+    yield
+    monkeypatch.delenv(FILESET_FEATURE_SWITCH, raising=True)
 
 
 @pytest.fixture(scope="session")
@@ -374,7 +382,12 @@ def schema_adv(connection_test, prefix):
 
 @pytest.fixture
 def schema_ext(
-    connection_test, enable_filepath_feature, mock_stores, mock_cache, prefix
+    connection_test,
+    enable_filepath_feature,
+    enable_fileset_feature,
+    mock_stores,
+    mock_cache,
+    prefix,
 ):
     schema = dj.Schema(
         prefix + "_extern",
