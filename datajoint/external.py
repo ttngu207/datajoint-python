@@ -31,7 +31,7 @@ def subfold(name, folds):
     subfolding for external storage:   e.g.  subfold('aBCdefg', (2, 3))  -->  ['ab','cde']
     """
     return (
-        (name[: folds[0]].lower(),) + subfold(name[folds[0]:], folds[1:])
+        (name[: folds[0]].lower(),) + subfold(name[folds[0] :], folds[1:])
         if folds
         else ()
     )
@@ -197,8 +197,7 @@ class ExternalTable(Table):
         cache_folder = config.get("cache", None)
         if cache_folder:
             try:
-                cache_path = Path(
-                    cache_folder, *subfold(uuid.hex, CACHE_SUBFOLDING))
+                cache_path = Path(cache_folder, *subfold(uuid.hex, CACHE_SUBFOLDING))
                 cache_file = Path(cache_path, uuid.hex)
                 blob = cache_file.read_bytes()
             except FileNotFoundError:
@@ -326,8 +325,7 @@ class ExternalTable(Table):
                 self & {"hash": filepath_hash}
             ).fetch1("filepath", "contents_hash", "size")
             external_path = self._make_external_filepath(relative_filepath)
-            local_filepath = Path(
-                self.spec["stage"]).absolute() / relative_filepath
+            local_filepath = Path(self.spec["stage"]).absolute() / relative_filepath
 
             if download_external:
                 file_exists = Path(local_filepath).is_file() and (
@@ -373,8 +371,7 @@ class ExternalTable(Table):
         for item in self.fetch("hash", "attachment_name", "filepath", **fetch_kwargs):
             if item["attachment_name"]:
                 # attachments
-                path = self._make_uuid_path(
-                    item["hash"], "." + item["attachment_name"])
+                path = self._make_uuid_path(item["hash"], "." + item["attachment_name"])
             elif item["filepath"]:
                 # external filepaths
                 path = self._make_external_filepath(item["filepath"])
@@ -622,8 +619,7 @@ class FileSetTable(Table):
             external_uuids = [
                 {"hash": self.external_table.upload_filepath(f)} for f in files
             ]
-            rel_filepaths = [f.relative_to(
-                self._stage).as_posix() for f in files]
+            rel_filepaths = [f.relative_to(self._stage).as_posix() for f in files]
             # query the contents_hash to form fileset_id
             content_hashes, external_sizes = (
                 self.external_table & external_uuids

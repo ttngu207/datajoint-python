@@ -49,8 +49,7 @@ def test_fileset_insert(table, store, schema_ext):
     # test insert fileset2 & fileset3
     table.insert([(2, fileset2), (3, fileset3)])
     assert len(table.fileset[store]) == 3
-    assert len(table.fileset[store].File) == len(
-        files) + len(fileset2) + len(fileset3)
+    assert len(table.fileset[store].File) == len(files) + len(fileset2) + len(fileset3)
     assert len(table.external[store]) == len(files)
 
 

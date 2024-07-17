@@ -119,8 +119,7 @@ def connection_root(connection_root_bare, prefix):
                 REQUIRE SSL;
                 """
         )
-        conn_root.query(
-            "GRANT ALL PRIVILEGES ON `djtest%%`.* TO 'datajoint'@'%%';")
+        conn_root.query("GRANT ALL PRIVILEGES ON `djtest%%`.* TO 'datajoint'@'%%';")
         conn_root.query("GRANT SELECT ON `djtest%%`.* TO 'djview'@'%%';")
         conn_root.query("GRANT SELECT ON `djtest%%`.* TO 'djssl'@'%%';")
     else:
@@ -465,8 +464,7 @@ def minio_client(s3_creds, minio_client_bare):
     yield minio_client_bare
 
     # Teardown S3
-    objs = list(minio_client_bare.list_objects(
-        s3_creds["bucket"], recursive=True))
+    objs = list(minio_client_bare.list_objects(s3_creds["bucket"], recursive=True))
     objs = [
         minio_client_bare.remove_object(
             s3_creds["bucket"], o.object_name.encode("utf-8")
