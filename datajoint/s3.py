@@ -25,6 +25,7 @@ class Folder:
         access_key,
         secret_key,
         *,
+        region=None,
         secure=False,
         proxy_server=None,
         **_
@@ -35,6 +36,7 @@ class Folder:
             access_key=access_key,
             secret_key=secret_key,
             secure=secure,
+            region=region,
             http_client=(
                 urllib3.ProxyManager(
                     proxy_server,

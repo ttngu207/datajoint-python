@@ -48,6 +48,7 @@ default = dict(
         "database.use_tls": None,
         "enable_python_native_blobs": True,  # python-native/dj0 encoding support
         "filepath_checksum_size_limit": None,  # file size limit for when to disable checksums
+        "stores": {},
     }
 )
 
@@ -151,6 +152,7 @@ class Config(collections.abc.MutableMapping):
                 "ACCESS_KEY",
                 "SECRET_KEY",
                 "LOCATION",
+                "region",
                 "secure",
                 "subfolding",
                 "stage",
